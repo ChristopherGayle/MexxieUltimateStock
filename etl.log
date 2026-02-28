@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/Users/mexx/stock_screener_backend/etl.py", line 1, in <module>
+    cat > etl.py << 'EOF'
+NameError: name 'cat' is not defined

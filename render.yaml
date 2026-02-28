@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: mexxie-stock-api
+    env: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /docs
+    envVars:
+      - key: QUESTDB_HOST
+        sync: false
+      - key: QUESTDB_PORT
+        value: "8812"
+      - key: CAPE_EUROPE
+        sync: false
+      - key: CAPE_ASIA
+        sync: false
+      - key: CAPE_AFRICA
+        sync: false
+      - key: CAPE_WORLDWIDE
+        sync: false

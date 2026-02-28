@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+  <meta name="description" content="Multi‑factor global stock screener – 10 themes, live data, persistent cache">
+  <meta name="theme-color" content="#0b1120">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mexxie Screener">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/icon.svg">
+  <title>Mexxie · Pro Screener</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; line-height: 1.5; overflow-x: hidden; transition: background 0.3s, color 0.3s; }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+    .stock-row { display: grid; grid-template-columns: 36px 1.4fr 0.9fr 0.9fr 0.8fr 0.9fr 0.9fr 0.9fr 90px; align-items: center; gap: 12px; cursor: pointer; transition: transform 0.1s, box-shadow 0.2s; border-bottom: 1px solid; padding: 10px 20px; }
+    .stock-row:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+    .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
+    .modal-card { max-width: 800px; width: 90%; border-radius: 24px; padding: 20px; box-shadow: 0 25px 50px -12px #000; max-height: 90vh; overflow-y: auto; }
+    .tab-btn { padding: 8px 20px; border-radius: 40px; font-weight: 600; font-size: 15px; border: 1px solid transparent; transition: 0.1s; cursor: pointer; }
+    .geo-tab { display: inline-block; padding: 6px 16px; border-radius: 30px; font-weight: 500; cursor: pointer; transition: 0.1s; margin-right: 6px; margin-bottom: 6px; border: 1px solid; }
+    .valve-btn { padding: 6px 14px; border-radius: 30px; font-weight: 700; font-size: 13px; border: 2px solid; cursor: pointer; transition: 0.1s; margin-right: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .slider-container { display: flex; align-items: center; gap: 12px; }
+    .slider-value { background: rgba(0,0,0,0.1); padding: 4px 10px; border-radius: 40px; font-weight: 600; min-width: 45px; text-align: center; }
+    input[type=range] { width: 140px; height: 6px; border-radius: 3px; outline: none; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; cursor: pointer; background: currentColor; }
+    .factor-breakdown { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .factor-item { padding: 8px; border-radius: 12px; background: rgba(0,0,0,0.05); }
+    .error-message { color: #f43f5e; padding: 20px; text-align: center; background: rgba(244,63,94,0.1); border-radius: 16px; margin: 20px 0; }
+    .virtual-scroll-container { height: 600px; overflow-y: auto; border-radius: 0 0 20px 20px; }
+    .watchlist-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid; }
+    .export-btn { padding: 6px 12px; border-radius: 30px; font-size: 13px; cursor: pointer; }
+    .strategy-section { margin-top: 30px; background: rgba(0,0,0,0.02); border-radius: 16px; padding: 20px; }
+    .factor-card { margin-bottom: 20px; padding: 16px; border-left: 4px solid; border-radius: 8px; }
+    .progress-bar-container { width: 100%; height: 6px; background: rgba(0,0,0,0.1); border-radius: 3px; margin-top: 10px; }
+    .progress-bar-fill { height: 100%; background: currentColor; border-radius: 3px; transition: width 0.2s; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div style="padding: 40px; text-align: center;">Loading Mexxie Pro...</div>
+</div>
+<script>
+(function() {
+  // ==================== ALL 10 THEMES ====================
+  const THEMES = {
+    ft: { name: "FT Pink", bg: "#fff1e5", surface: "#ffffff", card: "#fdf6ee", border: "#e8d5bf", accent: "#a0522d", sell: "#cc0000", buy: "#006400", text: "#1a0f05", ts: "#5a3e2b", tm: "#9c7a5c", grad: "linear-gradient(135deg,#a0522d,#8b3a1c)" },
+    bloomberg: { name: "Bloomberg Dark", bg: "#0a0a0a", surface: "#141414", card: "#1c1c1c", border: "#2e2e2e", accent: "#f29200", sell: "#ff4444", buy: "#00c853", text: "#e8e8e8", ts: "#a0a0a0", tm: "#666666", grad: "linear-gradient(135deg,#f29200,#c97a00)" },
+    arctic: { name: "Arctic Frost", bg: "#f0f4f8", surface: "#ffffff", card: "#f8fafc", border: "#cbd5e1", accent: "#0284c7", sell: "#dc2626", buy: "#16a34a", text: "#0f172a", ts: "#475569", tm: "#94a3b8", grad: "linear-gradient(135deg,#0284c7,#0369a1)" },
+    slate: { name: "Slate Executive", bg: "#0f1117", surface: "#181b23", card: "#1e2130", border: "#2d3148", accent: "#7c6af7", sell: "#f05a5a", buy: "#2ecf82", text: "#dde1f0", ts: "#8890b0", tm: "#535975", grad: "linear-gradient(135deg,#7c6af7,#5046d6)" },
+    neon: { name: "Neon Pulse", bg: "#050010", surface: "#0d0022", card: "#130030", border: "#2d0070", accent: "#d946ef", sell: "#f43f5e", buy: "#00ffc8", text: "#f0e6ff", ts: "#c084fc", tm: "#7c3aed", grad: "linear-gradient(135deg,#d946ef,#7c3aed)" },
+    crimson: { name: "Crimson Forge", bg: "#0d0005", surface: "#160008", card: "#20000d", border: "#500020", accent: "#fb7185", sell: "#ff6b35", buy: "#4ade80", text: "#ffe4e6", ts: "#fda4af", tm: "#e11d48", grad: "linear-gradient(135deg,#fb7185,#e11d48)" },
+    ocean: { name: "Deep Ocean", bg: "#010c18", surface: "#021525", card: "#031d30", border: "#074060", accent: "#38bdf8", sell: "#f87171", buy: "#34d399", text: "#e0f2fe", ts: "#7dd3fc", tm: "#0369a1", grad: "linear-gradient(135deg,#38bdf8,#0284c7)" },
+    gold: { name: "Pharaoh Gold", bg: "#080600", surface: "#110e00", card: "#1a1500", border: "#3d2f00", accent: "#fbbf24", sell: "#ef4444", buy: "#86efac", text: "#fffbeb", ts: "#fde68a", tm: "#b45309", grad: "linear-gradient(135deg,#fbbf24,#d97706,#b45309)" },
+    amber: { name: "Amber Dusk", bg: "#0f0a05", surface: "#1a1208", card: "#251a0a", border: "#40301a", accent: "#f59e0b", sell: "#ef4444", buy: "#84cc16", text: "#fef3c7", ts: "#fcd34d", tm: "#d97706", grad: "linear-gradient(135deg,#f59e0b,#d97706)" },
+    midnight: { name: "Midnight Sapphire", bg: "#0b1120", surface: "#141c2c", card: "#1e293b", border: "#334155", accent: "#10b981", sell: "#f43f5e", buy: "#38bdf8", text: "#f1f5f9", ts: "#94a3b8", tm: "#64748b", grad: "linear-gradient(135deg,#10b981,#0d9488)" },
+    sepia: { name: "Sepia Ledger", bg: "#f7f2e8", surface: "#fffdf8", card: "#f9f4ea", border: "#d9ccb3", accent: "#7a4b2f", sell: "#b42318", buy: "#117a65", text: "#2f241b", ts: "#6b5a48", tm: "#9a866f", grad: "linear-gradient(135deg,#7a4b2f,#9b6a3d)" },
+    cobalt: { name: "Cobalt Terminal", bg: "#060b14", surface: "#0d1626", card: "#111f33", border: "#1f3756", accent: "#5ec2ff", sell: "#ff6b6b", buy: "#4be7a5", text: "#eaf4ff", ts: "#9bb5cf", tm: "#5f7ea3", grad: "linear-gradient(135deg,#5ec2ff,#3a8fff)" }
+  };
+
+  const REGIONS = ["Worldwide", "US", "Europe", "Asia", "Africa"];
+  const REGION_EMOJI = { "Worldwide": "🌐", "US": "🇺🇸", "Europe": "🇪🇺", "Asia": "🌏", "Africa": "🌍" };
+  const SECTORS = ["All", "Technology", "Healthcare", "Finance", "Consumer", "Energy", "Industrial", "Materials", "Telecom", "Communication"];
+
+  const MARKET_VAL_DEFAULT = {
+    Worldwide: { current: 27.7, avg: 22.5, high: 28.5, low: 16.0 },
+    US: { current: 34.7, avg: 24.5, high: 34.7, low: 18.0 },
+    Europe: { current: 22.0, avg: 21.0, high: 26.0, low: 16.0 },
+    Asia: { current: 25.8, avg: 22.0, high: 29.4, low: 18.0 },
+    Africa: { current: 16.5, avg: 15.0, high: 20.0, low: 11.0 }
+  };
+
+  const FACTOR_INFO = {
+    greenblatt: { label: "Greenblatt", formula: "0.5*earnings_yield + 0.5*ROIC" },
+    tweedy: { label: "Tweedy Value", formula: "blend of P/B, div yield, FCF yield, insider flow" },
+    munger: { label: "Munger Quality", formula: "blend of gross margin, op margin, ROE" },
+    simons: { label: "Simons Momentum", formula: "proxied by price / 52w high" },
+    piotroski: { label: "Piotroski", formula: "F-score normalized to 0..1" },
+    altman: { label: "Altman Proxy", formula: "liquidity + profitability + ROA + leverage" },
+    rsi: { label: "RSI", formula: "14-day RSI mapped to 0..1" },
+    evEbit: { label: "EV/EBIT", formula: "lower multiple => higher score" },
+    shYield: { label: "Shareholder Yield", formula: "dividend + buyback yield bands" },
+    revGrowth: { label: "Revenue Growth", formula: "quarterly growth annualized and bucketed" },
+    shortInt: { label: "Short Interest", formula: "middle range preferred over extremes" },
+    wk52: { label: "52w Proximity", formula: "close / 52w high" },
+    vcp: { label: "VCP", formula: "volatility contraction + breakout proximity" },
+    sectorValue: { label: "Sector Value", formula: "sector valuation attractiveness (normalized)" },
+    insiderConf: { label: "Insider Confidence", formula: "net insider buy/sell value + count bias" },
+    leverage: { label: "Leverage Quality", formula: "debt/equity + interest coverage score" },
+    accruals: { label: "Accruals Quality", formula: "(EPS - CFO/share) / assets/share, lower is better" },
+    assetGrowth: { label: "Asset Growth", formula: "slower asset growth scores higher" }
+  };
+
+  function isoDate(d) {
+    return d.toISOString().slice(0, 10);
+  }
+  const DEFAULT_API_BASE = (() => {
+    if (typeof window !== "undefined" && window.location && window.location.protocol.startsWith("http")) {
+      const host = window.location.hostname;
+      if (host === "localhost" || host === "127.0.0.1") return "http://localhost:8000";
+      return window.location.origin;
+    }
+    return "http://localhost:8000";
+  })();
+  const API_BASE = (() => {
+    const fromGlobal = (typeof window !== "undefined" && window.MEXX_API_BASE) ? String(window.MEXX_API_BASE) : "";
+    const fromStorage = sessionStorage.getItem("mexx_api_base") || localStorage.getItem("mexx_api_base") || "";
+    const raw = (fromGlobal || fromStorage || DEFAULT_API_BASE).trim();
+    return raw.replace(/\/+$/, "");
+  })();
+  function apiUrl(path, query) {
+    const url = new URL(`${API_BASE}${path}`);
+    if (query) {
+      Object.entries(query).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+      });
+    }
+    return url.toString();
+  }
+
+  const DEFAULT_END_DATE = isoDate(new Date());
+  const d1y = new Date();
+  d1y.setFullYear(d1y.getFullYear() - 1);
+  const DEFAULT_START_DATE = isoDate(d1y);
+
+  // ==================== STATE ====================
+  const State = {
+    theme: "midnight",
+    tab: "screener",
+    region: "Worldwide",
+    sector: "All",
+    marketRegime: "neutral",
+    autoRegime: "neutral",
+    weights: { greenblatt: 18, tweedy: 8, munger: 15, simons: 12, piotroski: 8, altman: 4, rsi: 3, evEbit: 5, shYield: 6, revGrowth: 4, shortInt: 2, wk52: 7, vcp: 8, sectorValue: 5, insiderConf: 3, leverage: 4 },
+    baseWeights: { greenblatt: 18, tweedy: 8, munger: 15, simons: 12, piotroski: 8, altman: 4, rsi: 3, evEbit: 5, shYield: 6, revGrowth: 4, shortInt: 2, wk52: 7, vcp: 8, sectorValue: 5, insiderConf: 3, leverage: 4 },
+    numPicks: 20,
+    loading: false,
+    loadingMessage: "",
+    liveData: [],
+    watchlist: [],
+    prior: [],
+    lastUpdate: null,
+    error: null,
+    backtestResults: null,
+    historicalBacktest: null,
+    historicalBacktestLoading: false,
+    historicalBacktestError: null,
+    backtestParams: {
+      startDate: DEFAULT_START_DATE,
+      endDate: DEFAULT_END_DATE,
+      horizonDays: 63,
+      rebalanceDays: 21,
+      quantiles: 5
+    },
+    marketValuation: MARKET_VAL_DEFAULT,
+    marketValAsOf: null,
+    portfolio: [],
+    loadedPriorLabel: null
+  };
+
+  const listeners = [];
+  function subscribe(listener) { listeners.push(listener); }
+  function setState(newState) {
+    Object.assign(State, newState);
+    listeners.forEach(fn => fn());
+  }
+  function T() { return THEMES[State.theme]; }
+
+  // ==================== CACHE HELPERS ====================
+  function getCacheKey() {
+    return `mexxie_stocks_${State.region}_${State.sector}`;
+  }
+
+  function loadFromCache() {
+    try {
+      const key = getCacheKey();
+      const cached = sessionStorage.getItem(key);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length) {
+          State.liveData = parsed;
+          State.lastUpdate = new Date(parsed[0]?._timestamp || Date.now());
+          // remove internal timestamp
+          State.liveData.forEach(s => delete s._timestamp);
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('Cache load failed', e);
+    }
+    return false;
+  }
+
+  function saveToCache(data) {
+    try {
+      const key = getCacheKey();
+      const toStore = data.map(s => ({ ...s, _timestamp: Date.now() }));
+      sessionStorage.setItem(key, JSON.stringify(toStore));
+    } catch (e) {}
+  }
+
+  // Load cache for initial region
+  loadFromCache();
+
+  // ==================== API CALL ====================
+  async function fetchMarketValuation() {
+    try {
+      const res = await fetch(apiUrl("/api/cape"));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data && data.values) {
+        setState({
+          marketValuation: { ...MARKET_VAL_DEFAULT, ...data.values },
+          marketValAsOf: data.as_of || null
+        });
+      }
+    } catch (e) {
+      // Keep defaults silently if live CAPE is unavailable.
+    }
+  }
+
+  async function fetchLiveData() {
+    setState({ loading: true, loadingMessage: "Fetching from backend...", error: null });
+    try {
+      const url = apiUrl("/api/stocks", {
+        region: State.region,
+        sector: State.sector,
+        limit: State.numPicks
+      });
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const enriched = data.map(item => ({
+        symbol: item.symbol,
+        name: item.name,
+        sector: item.sector,
+        region: item.region,
+        price: item.price,
+        change: item.change || 0,
+        perf3m: "0.0",
+        composite: item.score / 100,
+        week52High: null,
+        week52Low: null,
+        raw: {
+          greenblatt: item.greenblatt,
+          tweedy: item.tweedy,
+          munger: item.munger,
+          simons: item.simons,
+          piotroski: item.piotroski,
+          altman: item.altman,
+          rsi: item.rsi,
+          evEbit: item.ev_ebit,
+          shYield: item.sh_yield,
+          revGrowth: item.rev_growth,
+          shortInt: item.short_int,
+          wk52: item.wk52,
+          vcp: item.vcp / 100,
+          sectorValue: item.sector_value,
+          insiderConf: item.insider_conf,
+          leverage: item.leverage,
+          accruals: item.accruals,
+          assetGrowth: item.asset_growth
+        }
+      }));
+      setState({ liveData: enriched, loading: false, lastUpdate: new Date(), loadedPriorLabel: null });
+      saveToCache(enriched);
+    } catch (e) {
+      console.warn("Backend fetch failed", e);
+      setState({ loading: false, error: "Backend unavailable – showing cached data if available" });
+    }
+  }
+
+  // Auto‑fetch on load if no cache
+  if (!State.liveData.length) {
+    fetchLiveData();
+  }
+  fetchMarketValuation();
+
+  // ==================== MARKET REGIME ====================
+  function getAutoRegime(region) {
+    const mv = State.marketValuation || MARKET_VAL_DEFAULT;
+    const val = mv[region] || mv.Worldwide;
+    if (val.current >= val.high * 0.95) return "overvalued";
+    if (val.current <= val.low * 1.1) return "undervalued";
+    return "neutral";
+  }
+
+  function applyMarketRegime(regime, region) {
+    const autoReg = getAutoRegime(region);
+    const effectiveRegime = (regime === 'auto') ? autoReg : regime;
+    let w = { ...State.baseWeights };
+    if (effectiveRegime === 'overvalued') {
+      w.greenblatt += 5; w.altman += 3; w.vcp += 2; w.simons -= 4; w.wk52 -= 3; w.rsi -= 2; w.leverage += 2;
+    } else if (effectiveRegime === 'undervalued') {
+      w.simons += 6; w.wk52 += 4; w.revGrowth += 3; w.greenblatt -= 3; w.altman -= 2; w.sectorValue -= 2;
+    } else {
+      w.munger += 3; w.piotroski += 2;
+    }
+    Object.keys(w).forEach(k => w[k] = Math.max(1, Math.min(30, w[k] || 0)));
+    setState({ weights: w, marketRegime: regime, autoRegime: autoReg });
+  }
+
+  // ==================== RANK DIAGNOSTICS ====================
+  function runBacktest() {
+    const data = State.liveData.length ? State.liveData : [];
+    if (data.length === 0) return;
+    const sorted = [...data].sort((a,b) => b.composite - a.composite);
+    const q = Math.max(1, Math.floor(sorted.length / 5));
+    const top = sorted.slice(0, q);
+    const bottom = sorted.slice(-q);
+    const avg = (arr, fn) => arr.reduce((sum, item) => sum + fn(item), 0) / (arr.length || 1);
+
+    const topScore = avg(top, s => s.composite) * 100;
+    const bottomScore = avg(bottom, s => s.composite) * 100;
+    const topMomentum = avg(top, s => (s.raw?.wk52 || 0.0) * 100);
+    const bottomMomentum = avg(bottom, s => (s.raw?.wk52 || 0.0) * 100);
+    const topAccruals = avg(top, s => (s.raw?.accruals ?? 0.5) * 100);
+    const bottomAccruals = avg(bottom, s => (s.raw?.accruals ?? 0.5) * 100);
+
+    setState({
+      backtestResults: {
+        top: topScore,
+        bottom: bottomScore,
+        alpha: topScore - bottomScore,
+        topMomentum,
+        bottomMomentum,
+        topAccruals,
+        bottomAccruals
+      }
+    });
+  }
+
+  async function runHistoricalBacktest() {
+    const p = State.backtestParams || {};
+    const startDate = p.startDate || DEFAULT_START_DATE;
+    const endDate = p.endDate || DEFAULT_END_DATE;
+    const horizonDays = Math.max(5, Math.min(252, parseInt(p.horizonDays, 10) || 63));
+    const rebalanceDays = Math.max(5, Math.min(63, parseInt(p.rebalanceDays, 10) || 21));
+    const quantiles = Math.max(2, Math.min(10, parseInt(p.quantiles, 10) || 5));
+
+    if (startDate >= endDate) {
+      setState({ historicalBacktestError: "Start date must be earlier than end date." });
+      return;
+    }
+
+    setState({ historicalBacktestLoading: true, historicalBacktestError: null });
+    try {
+      const qs = new URLSearchParams({
+        region: State.region,
+        sector: State.sector,
+        start_date: startDate,
+        end_date: endDate,
+        horizon_days: String(horizonDays),
+        rebalance_days: String(rebalanceDays),
+        quantiles: String(quantiles),
+        min_universe: "30"
+      });
+      const res = await fetch(apiUrl("/api/backtest") + `?${qs.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setState({ historicalBacktest: data, historicalBacktestLoading: false, historicalBacktestError: null });
+    } catch (e) {
+      setState({ historicalBacktestLoading: false, historicalBacktestError: e.message || "Backtest failed" });
+    }
+  }
+
+  // ==================== EXPORT ====================
+  function exportToCSV(stocks) {
+    const headers = ['Symbol', 'Name', 'Price', 'Change%', 'Score', 'Region', 'Sector'];
+    const rows = stocks.map(s => [
+      s.symbol, s.name, s.price.toFixed(2), s.change.toFixed(2), (s.composite*100).toFixed(1), s.region, s.sector
+    ]);
+    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mexxie_screener.csv';
+    a.click();
+  }
+
+  // ==================== WATCHLIST ====================
+  function addToWatchlist(stock) {
+    if (!State.watchlist.find(w => w.symbol === stock.symbol)) {
+      setState({ watchlist: [...State.watchlist, stock] });
+    }
+  }
+  function removeFromWatchlist(symbol) {
+    setState({ watchlist: State.watchlist.filter(w => w.symbol !== symbol) });
+  }
+
+  // ==================== PRIOR ====================
+  function saveToPrior() {
+    const filtered = State.liveData.filter(s => 
+      (State.region === 'Worldwide' || s.region === State.region) &&
+      (State.sector === 'All' || s.sector === State.sector)
+    );
+    const topStocks = filtered.sort((a, b) => b.composite - a.composite).slice(0, State.numPicks).map(s => ({ ...s }));
+    const priorEntry = {
+      timestamp: new Date().toLocaleString(),
+      state: {
+        region: State.region,
+        sector: State.sector,
+        numPicks: State.numPicks,
+        marketRegime: State.marketRegime,
+        weights: { ...State.weights }
+      },
+      stocks: topStocks
+    };
+    const prior = [priorEntry, ...State.prior].slice(0, 10);
+    setState({ prior });
+  }
+
+  function loadPrior(index) {
+    const entry = State.prior[index];
+    if (entry) {
+      setState({
+        ...entry.state,
+        tab: 'screener',
+        weights: entry.state.weights,
+        prior: State.prior,
+        liveData: entry.stocks,
+        loadedPriorLabel: entry.timestamp
+      });
+    }
+  }
+
+  // ==================== STOCK MODAL ====================
+  function showStockModal(stock, theme) {
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+    
+    const factorItems = stock.raw ? Object.entries(stock.raw).map(([key, val]) => {
+      const info = FACTOR_INFO[key] || { label: key, formula: "normalized factor score" };
+      return `
+      <div class="factor-item" style="background:${theme.surface}">
+        <div style="display:flex;justify-content:space-between;">
+          <span style="font-weight:600">${info.label}</span>
+          <span style="color:${theme.accent}">${(val * 100).toFixed(1)}</span>
+        </div>
+        <div style="margin-top:4px;font-size:11px;color:${theme.ts};">${info.formula}</div>
+      </div>
+    `;
+    }).join('') : '<div>No factor data</div>';
+
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.style.background = theme.card;
+    card.style.border = `1px solid ${theme.border}`;
+    card.style.color = theme.text;
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px">
+        <span style="font-weight:700;font-size:18px">${stock.symbol} – ${stock.name}</span>
+        <span style="cursor:pointer;font-size:24px" onclick="this.closest('.modal').remove()">&times;</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+        <div><div style="height:180px;"><canvas id="stockChart" width="200" height="150"></canvas></div></div>
+        <div>
+          <div style="background:${theme.accent}20; border-radius:16px; padding:12px; margin-bottom:12px;">
+            <div style="font-size:13px;">Composite Score</div>
+            <div style="font-size:28px; font-weight:700; color:${theme.accent}">${(stock.composite * 100).toFixed(1)}</div>
+          </div>
+          <div style="font-size:13px;"><span style="color:${theme.ts}">Price:</span> $${typeof stock.price === 'number' ? stock.price.toFixed(2) : '0.00'}</div>
+          <div style="font-size:13px;"><span style="color:${theme.ts}">52w high:</span> ${stock.week52High ? '$' + stock.week52High.toFixed(2) : 'N/A'}</div>
+          <button id="addToWatchlistBtn" style="margin-top:10px;background:${theme.accent};border:none;color:${theme.bg};border-radius:30px;padding:6px 12px;">⭐ Add to Watchlist</button>
+        </div>
+      </div>
+      <div style="margin-top:20px;">
+        <div style="font-weight:600; margin-bottom:10px;">📊 Factor Contributions</div>
+        <div class="factor-breakdown">${factorItems}</div>
+      </div>
+    `;
+    modal.appendChild(card);
+    document.body.appendChild(modal);
+
+    document.getElementById('addToWatchlistBtn')?.addEventListener('click', () => {
+      addToWatchlist(stock);
+      modal.remove();
+    });
+
+    const ctx = document.getElementById('stockChart')?.getContext('2d');
+    if (ctx) {
+      const labels = Array.from({length:30}, (_, i) => `D${i+1}`);
+      const prices = Array.from({length:30}, (_, i) => (stock.price || 100) * (0.8 + 0.4 * Math.sin(i/5) + 0.05 * i/30));
+      new Chart(ctx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Close', data: prices, borderColor: theme.accent, backgroundColor: theme.accent + '33', tension: 0.1 }] },
+        options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } } }
+      });
+    }
+  }
+
+  function renderFactorCard(name, description, t) {
+    return `
+      <div class="factor-card" style="border-left-color:${t.accent}; background:${t.surface}; margin-bottom:16px;">
+        <h4 style="margin-bottom:8px;">${name}</h4>
+        <p style="color:${t.ts};">${description}</p>
+      </div>
+    `;
+  }
+
+  // ==================== RENDER ====================
+  function render() {
+    const app = document.getElementById('app');
+    if (!app) return;
+    try {
+      const t = T();
+      const autoReg = getAutoRegime(State.region);
+      const effectiveRegime = State.marketRegime === 'auto' ? autoReg : State.marketRegime;
+
+      const tabs = `
+        <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+          <button class="tab-btn" data-tab="screener" style="background:${State.tab==='screener'?t.accent:t.surface}; color:${State.tab==='screener'?t.bg:t.text};">🔍 Screener</button>
+          <button class="tab-btn" data-tab="prior" style="background:${State.tab==='prior'?t.accent:t.surface}; color:${State.tab==='prior'?t.bg:t.text};">📁 Prior (${State.prior.length})</button>
+          <button class="tab-btn" data-tab="strategy" style="background:${State.tab==='strategy'?t.accent:t.surface}; color:${State.tab==='strategy'?t.bg:t.text};">📊 Strategy</button>
+          <button class="tab-btn" data-tab="watchlist" style="background:${State.tab==='watchlist'?t.accent:t.surface}; color:${State.tab==='watchlist'?t.bg:t.text};">⭐ Watchlist (${State.watchlist.length})</button>
+        </div>
+      `;
+
+      const header = `
+        <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:20px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-size:28px;font-weight:700;background:${t.grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent">MEXxIE</span>
+            <span style="font-size:14px; color:${t.ts}">${State.liveData.length} stocks</span>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <select id="themeSelect" style="background:${t.surface};color:${t.text};border:1px solid ${t.border};border-radius:40px;padding:8px 16px">
+              ${Object.keys(THEMES).map(k => `<option value="${k}" ${State.theme===k?'selected':''}>${THEMES[k].name}</option>`).join('')}
+            </select>
+            <button id="fetchLiveBtn" style="background:${t.accent};border:none;color:${t.bg};border-radius:40px;padding:8px 18px;font-weight:600" ${State.loading?'disabled':''}>${State.loading?'Loading...':'⟳ Fetch from Backend'}</button>
+            <button id="exportBtn" class="export-btn" style="background:${t.surface};border:1px solid ${t.border};">📥 Export CSV</button>
+          </div>
+        </div>
+      `;
+
+      let content = '';
+
+      if (State.tab === 'screener') {
+        const geoHtml = REGIONS.map(r => `
+          <span class="geo-tab" data-reg="${r}" style="background:${State.region===r?t.accent:t.surface}; color:${State.region===r?t.bg:t.text}; border:1px solid ${t.border}">${r} ${REGION_EMOJI[r]}</span>
+        `).join('');
+
+        const mv = State.marketValuation || MARKET_VAL_DEFAULT;
+        const regionVal = mv[State.region] || mv.Worldwide;
+        const valveHtml = `
+          <div style="margin:15px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <span style="font-weight:500;">📊 ${State.region} Market:</span>
+            <button class="valve-btn" data-regime="undervalued" style="background:${effectiveRegime==='undervalued'?t.buy:t.surface}; color:${effectiveRegime==='undervalued'?t.bg:t.text}; border-color:${effectiveRegime==='undervalued'?t.buy:t.text};">🔥 Undervalued</button>
+            <button class="valve-btn" data-regime="neutral" style="background:${effectiveRegime==='neutral'?t.accent:t.surface}; color:${effectiveRegime==='neutral'?t.bg:t.text}; border-color:${effectiveRegime==='neutral'?t.accent:t.text};">⚖️ Neutral</button>
+            <button class="valve-btn" data-regime="overvalued" style="background:${effectiveRegime==='overvalued'?t.sell:t.surface}; color:${effectiveRegime==='overvalued'?t.bg:t.text}; border-color:${effectiveRegime==='overvalued'?t.sell:t.text};">⚠️ Overvalued</button>
+            <button class="valve-btn" data-regime="auto" style="background:${State.marketRegime==='auto'?t.tm:t.surface}; color:${State.marketRegime==='auto'?t.bg:t.text}; border-color:${State.marketRegime==='auto'?t.tm:t.text};">🤖 Auto (CAPE: ${regionVal.current.toFixed(1)})</button>
+          </div>
+          ${State.marketValAsOf ? `<div style="font-size:11px;color:${t.tm};margin-top:-6px;">CAPE data as of: ${new Date(State.marketValAsOf).toLocaleString()}</div>` : ''}
+        `;
+
+        const controls = `
+          <div style="background:${t.card};border-radius:24px;padding:18px;margin-bottom:20px;border:1px solid ${t.border}">
+            <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center">
+              <select id="sectorSelect" style="background:${t.surface};color:${t.text};border:1px solid ${t.border};border-radius:40px;padding:8px 16px">
+                <option value="All">All sectors</option>
+                ${SECTORS.map(s => `<option value="${s}" ${State.sector===s?'selected':''}>${s}</option>`).join('')}
+              </select>
+              <div class="slider-container">
+                <span>Top</span>
+                <input type="range" id="numRange" min="5" max="100" value="${State.numPicks}" style="width:140px;">
+                <span class="slider-value">${State.numPicks}</span>
+              </div>
+              <button id="savePriorBtn" style="background:${t.surface};border:1px solid ${t.border};border-radius:40px;padding:6px 14px;">💾 Save to Prior</button>
+            </div>
+            ${State.loading ? `<div style="margin-top:12px;color:${t.accent}">${State.loadingMessage}</div>` : ''}
+            ${State.lastUpdate ? `<div style="font-size:12px;color:${t.tm}">Last: ${State.lastUpdate.toLocaleTimeString()}</div>` : ''}
+            ${State.loadedPriorLabel ? `<div style="font-size:12px;color:${t.tm}">Loaded prior snapshot: ${State.loadedPriorLabel}</div>` : ''}
+            ${State.error ? `<div style="color:${t.sell};">❌ ${State.error}</div>` : ''}
+          </div>
+        `;
+
+        // Filter and sort locally
+        let filtered = State.liveData.filter(s => 
+          (State.region === 'Worldwide' || s.region === State.region) &&
+          (State.sector === 'All' || s.sector === State.sector)
+        );
+        filtered.sort((a, b) => b.composite - a.composite);
+        const topPicks = filtered.slice(0, State.numPicks);
+
+        let gridHtml = `<div style="background:${t.surface};border-radius:20px 20px 0 0;border:1px solid ${t.border};border-bottom:none;padding:14px 20px;font-weight:600;font-size:13px;display:grid;grid-template-columns:36px 1.4fr 0.9fr 0.9fr 0.8fr 0.9fr 0.9fr 0.9fr 90px;gap:12px"><div>#</div><div>Name</div><div>Price</div><div>Chg%</div><div>3M</div><div>Score</div><div>Accruals</div><div>Asset Gr</div><div>Mom</div></div>`;
+        gridHtml += `<div class="virtual-scroll-container" style="border:1px solid ${t.border};border-radius:0 0 20px 20px;overflow-y:auto;background:${t.surface};height:600px;">`;
+
+        if (State.loading) {
+          gridHtml += `<div style="padding:30px;text-align:center;">Loading data...</div>`;
+        } else if (topPicks.length === 0) {
+          gridHtml += `<div style="padding:30px;text-align:center;">No data – click "Fetch from Backend".</div>`;
+        } else {
+          topPicks.forEach((item, idx) => {
+            const chgCol = item.change >= 0 ? t.buy : t.sell;
+            const wk52val = item.raw ? item.raw.wk52 : 0.85;
+            const momText = wk52val > 0.9 ? '🔥52w' : (wk52val > 0.75 ? '📈' : '📊');
+            const scoreDisplay = item.composite ? (item.composite * 100).toFixed(1) : '0.0';
+            const accrualScore = item.raw && typeof item.raw.accruals === 'number' ? item.raw.accruals : null;
+            const assetGrowthScore = item.raw && typeof item.raw.assetGrowth === 'number' ? item.raw.assetGrowth : null;
+            const accrualDisplay = accrualScore !== null ? (accrualScore * 100).toFixed(1) : 'N/A';
+            const assetGrowthDisplay = assetGrowthScore !== null ? (assetGrowthScore * 100).toFixed(1) : 'N/A';
+            const accrualColor = accrualScore === null ? t.ts : (accrualScore >= 0.7 ? t.buy : (accrualScore < 0.4 ? t.sell : t.text));
+            const assetGrowthColor = assetGrowthScore === null ? t.ts : (assetGrowthScore >= 0.7 ? t.buy : (assetGrowthScore < 0.4 ? t.sell : t.text));
+            gridHtml += `
+              <div class="stock-row" data-symbol="${item.symbol}" style="padding:10px 20px;">
+                <div class="mono">${idx+1}</div>
+                <div><span style="font-weight:600">${item.symbol}</span> <span style="color:${t.tm}">${REGION_EMOJI[item.region]}</span></div>
+                <div class="mono">$${typeof item.price === 'number' ? item.price.toFixed(2) : '0.00'}</div>
+                <div class="mono" style="color:${chgCol}">${item.change > 0 ? '+' : ''}${typeof item.change === 'number' ? item.change.toFixed(2) : '0.00'}%</div>
+                <div class="mono">${item.perf3m || '0.0'}%</div>
+                <div class="mono" style="font-weight:700;color:${t.accent}">${scoreDisplay}</div>
+                <div class="mono" style="color:${accrualColor};font-weight:600">${accrualDisplay}</div>
+                <div class="mono" style="color:${assetGrowthColor};font-weight:600">${assetGrowthDisplay}</div>
+                <div><span style="background:${t.accent}20;color:${t.accent};padding:4px 8px;border-radius:20px;font-size:11px">${momText}</span></div>
+              </div>
+            `;
+          });
+        }
+        gridHtml += `</div>`;
+        const backtestCard = `
+          <div style="margin-top:16px;background:${t.card};border:1px solid ${t.border};border-radius:16px;padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div style="font-weight:700;">📈 Rank Diagnostics</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="runBacktestBtn" style="background:${t.accent};border:none;color:${t.bg};padding:6px 12px;border-radius:20px;">Local Diagnostic</button>
+                <button id="runHistoricalBacktestBtn" style="background:${t.surface};border:1px solid ${t.border};color:${t.text};padding:6px 12px;border-radius:20px;" ${State.historicalBacktestLoading?'disabled':''}>${State.historicalBacktestLoading?'Running...':'Historical Backtest'}</button>
+              </div>
+            </div>
+            <div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;">
+              <label style="font-size:12px;color:${t.ts};display:flex;flex-direction:column;gap:5px;">
+                Start Date
+                <input id="btStartDate" type="date" value="${State.backtestParams.startDate}" style="background:${t.surface};color:${t.text};border:1px solid ${t.border};border-radius:10px;padding:6px 8px;" />
+              </label>
+              <label style="font-size:12px;color:${t.ts};display:flex;flex-direction:column;gap:5px;">
+                End Date
+                <input id="btEndDate" type="date" value="${State.backtestParams.endDate}" style="background:${t.surface};color:${t.text};border:1px solid ${t.border};border-radius:10px;padding:6px 8px;" />
+              </label>
+              <label style="font-size:12px;color:${t.ts};display:flex;flex-direction:column;gap:5px;">
+                Horizon (days)
+                <input id="btHorizon" type="number" min="5" max="252" value="${State.backtestParams.horizonDays}" style="background:${t.surface};color:${t.text};border:1px solid ${t.border};border-radius:10px;padding:6px 8px;" />
+              </label>
+              <label style="font-size:12px;color:${t.ts};display:flex;flex-direction:column;gap:5px;">
+                Rebalance (days)
+                <input id="btRebalance" type="number" min="5" max="63" value="${State.backtestParams.rebalanceDays}" style="background:${t.surface};color:${t.text};border:1px solid ${t.border};border-radius:10px;padding:6px 8px;" />
+              </label>
+              <label style="font-size:12px;color:${t.ts};display:flex;flex-direction:column;gap:5px;">
+                Quantiles
+                <input id="btQuantiles" type="number" min="2" max="10" value="${State.backtestParams.quantiles}" style="background:${t.surface};color:${t.text};border:1px solid ${t.border};border-radius:10px;padding:6px 8px;" />
+              </label>
+            </div>
+            ${State.backtestResults ? `
+              <div style="margin-top:10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;font-size:13px;">
+                <div style="background:${t.surface};padding:10px;border-radius:12px;">Top quintile avg score: <strong>${State.backtestResults.top.toFixed(1)}</strong></div>
+                <div style="background:${t.surface};padding:10px;border-radius:12px;">Bottom quintile avg score: <strong>${State.backtestResults.bottom.toFixed(1)}</strong></div>
+                <div style="background:${t.surface};padding:10px;border-radius:12px;">Score spread (alpha proxy): <strong style="color:${State.backtestResults.alpha>=0?t.buy:t.sell}">${State.backtestResults.alpha.toFixed(1)}</strong></div>
+                <div style="background:${t.surface};padding:10px;border-radius:12px;">Top vs bottom momentum: <strong>${State.backtestResults.topMomentum.toFixed(1)} vs ${State.backtestResults.bottomMomentum.toFixed(1)}</strong></div>
+                <div style="background:${t.surface};padding:10px;border-radius:12px;">Top vs bottom accruals: <strong>${State.backtestResults.topAccruals.toFixed(1)} vs ${State.backtestResults.bottomAccruals.toFixed(1)}</strong></div>
+              </div>
+            ` : '<div style="margin-top:8px;color:'+t.ts+';font-size:12px;">Runs a deterministic rank-quality diagnostic on current universe (no random inputs).</div>'}
+            ${State.historicalBacktestError ? `<div style="margin-top:10px;color:${t.sell};font-size:12px;">Historical backtest error: ${State.historicalBacktestError}</div>` : ''}
+            ${State.historicalBacktest ? `
+              <div style="margin-top:12px;border-top:1px solid ${t.border};padding-top:12px;">
+                <div style="font-weight:700;margin-bottom:8px;">🧭 Historical Realized Returns</div>
+                ${State.historicalBacktest.message ? `<div style="margin-bottom:8px;color:${t.ts};font-size:12px;">${State.historicalBacktest.message}</div>` : ''}
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:13px;">
+                  <div style="background:${t.surface};padding:10px;border-radius:12px;">Rebalances: <strong>${State.historicalBacktest.num_rebalances}</strong></div>
+                  <div style="background:${t.surface};padding:10px;border-radius:12px;">Universe: <strong>${State.historicalBacktest.num_symbols}</strong></div>
+                  <div style="background:${t.surface};padding:10px;border-radius:12px;">Top-Bottom mean spread: <strong style="color:${(State.historicalBacktest.aggregate?.mean_top_minus_bottom||0)>=0?t.buy:t.sell}">${((State.historicalBacktest.aggregate?.mean_top_minus_bottom||0)*100).toFixed(2)}%</strong></div>
+                </div>
+                <div style="margin-top:10px;overflow-x:auto;">
+                  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                    <thead>
+                      <tr style="border-bottom:1px solid ${t.border};">
+                        <th style="text-align:left;padding:6px;">Quantile</th>
+                        <th style="text-align:left;padding:6px;">Mean Return</th>
+                        <th style="text-align:left;padding:6px;">Compound Return</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${(State.historicalBacktest.aggregate?.mean_return_by_quantile || []).map((val, i) => `
+                        <tr style="border-bottom:1px solid ${t.border}55;">
+                          <td style="padding:6px;">Q${i+1}</td>
+                          <td style="padding:6px;color:${val>=0?t.buy:t.sell};">${(val*100).toFixed(2)}%</td>
+                          <td style="padding:6px;color:${((State.historicalBacktest.aggregate?.compound_return_by_quantile||[])[i]||0)>=0?t.buy:t.sell};">${((((State.historicalBacktest.aggregate?.compound_return_by_quantile||[])[i]||0)*100)).toFixed(2)}%</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+        content = geoHtml + valveHtml + controls + gridHtml + backtestCard;
+      }
+
+      else if (State.tab === 'strategy') {
+        content = `
+          <div style="background:${t.card};border-radius:24px;padding:24px;border:1px solid ${t.border}">
+            <h2 style="margin-bottom:20px;color:${t.accent}">📈 Strategy and Formulas (Easy Read)</h2>
+            <p style="margin-bottom:24px;color:${t.ts}">The backend computes normalized factor scores (0 to 1) for each stock, then combines them with region-specific weights into one composite score used for ranking.</p>
+            <div class="strategy-section" style="margin-top:0;">
+              <h3>🧭 Beginner Summary</h3>
+              <p style="color:${t.ts};margin-top:8px;">This screener is a ranking engine, not a single “buy signal.” It compares many stocks at once and orders them from strongest to weakest based on a multi-factor score.</p>
+              <ol style="padding-left:20px;line-height:1.8;margin-top:10px;">
+                <li><strong>Collect data:</strong> The ETL pulls price, fundamentals, and insider transaction data for each symbol.</li>
+                <li><strong>Score each factor:</strong> Every factor is converted to a common 0 to 1 scale, so different metrics can be combined fairly.</li>
+                <li><strong>Apply region weights:</strong> The model gives different importance to factors by region (US, Europe, Asia, Africa).</li>
+                <li><strong>Create one composite score:</strong> Weighted factor scores are averaged into a single value.</li>
+                <li><strong>Rank stocks:</strong> Higher composite score means higher placement in the screener list.</li>
+              </ol>
+              <p style="color:${t.ts};margin-top:10px;"><strong>How to use it:</strong> Focus first on top-ranked names, then open each stock modal to inspect factor breakdown before making any decision.</p>
+              <p style="color:${t.ts};margin-top:6px;"><strong>Important:</strong> This helps prioritize research; it does not guarantee future returns.</p>
+            </div>
+            <div style="background:${t.surface};border:1px solid ${t.border};border-radius:16px;padding:14px;margin-bottom:20px;">
+              <div style="font-weight:700;margin-bottom:6px;">Composite Formula</div>
+              <div class="mono" style="font-size:12px;color:${t.ts};">composite = SUM(factor_score * region_weight) / SUM(region_weights)</div>
+              <div style="margin-top:8px;font-size:12px;color:${t.ts};">Higher score means better rank in the Screener tab.</div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                <thead><tr style="border-bottom:2px solid ${t.border}"><th>Active Composite Factors</th><th>How It Is Scored (simplified)</th><th>Why It Helps</th></tr></thead>
+                <tbody>
+                  <tr><td>Greenblatt</td><td>0.5*earnings_yield + 0.5*ROIC</td><td>Value + quality blend</td></tr>
+                  <tr><td>Tweedy Value</td><td>Blend of P/B, dividend yield, FCF yield, insider net flow</td><td>Classic deep-value signals</td></tr>
+                  <tr><td>Munger Quality</td><td>Blend of gross margin, operating margin, ROE</td><td>Higher business quality</td></tr>
+                  <tr><td>Simons Momentum</td><td>Price / 52-week high (near highs scores better)</td><td>Trend persistence</td></tr>
+                  <tr><td>Piotroski</td><td>F-score normalized to 0..1</td><td>Fundamental improvement</td></tr>
+                  <tr><td>Druckenmiller Overlay</td><td>Region macro score + stock momentum/growth fit</td><td>Macro regime alignment</td></tr>
+                  <tr><td>EV/EBIT</td><td>Lower EV/EBIT gets higher score buckets</td><td>Enterprise valuation control</td></tr>
+                  <tr><td>Shareholder Yield</td><td>Dividend yield + buyback yield bucketed</td><td>Capital return discipline</td></tr>
+                  <tr><td>Revenue Growth</td><td>QoQ growth annualized and bucketed</td><td>Growth quality</td></tr>
+                  <tr><td>Short Interest</td><td>Mid-range short interest favored over extremes</td><td>Crowding/squeeze balance</td></tr>
+                  <tr><td>Sector Value</td><td>Normalized sector valuation signal</td><td>Avoid overheated sectors</td></tr>
+                  <tr style="background:${t.accent}20;"><td><strong>Accruals Quality</strong></td><td>(EPS - CFO/share) / assets/share; lower accruals score higher</td><td>Earnings quality filter</td></tr>
+                  <tr style="background:${t.accent}20;"><td><strong>Asset Growth</strong></td><td>Lower/slower asset growth scores higher</td><td>Penalizes empire building</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="strategy-section">
+              <h3>🧪 Additional Diagnostic Factors (Tracked in ETL)</h3>
+              <p style="color:${t.ts};margin-bottom:10px;">These are computed and stored for monitoring, and can be promoted into composite weighting later if desired.</p>
+              <ul style="padding-left:20px;line-height:1.8;">
+                <li><strong>RSI:</strong> 14-day RSI mapped to score where ~45-65 is strongest.</li>
+                <li><strong>VCP:</strong> Uses 20/10/5-day volatility contraction plus breakout proximity.</li>
+                <li><strong>Altman Proxy:</strong> Liquidity, profitability, ROA, and leverage blend for distress risk.</li>
+                <li><strong>Insider Confidence:</strong> Net insider buy/sell value and count bias.</li>
+                <li><strong>Leverage Quality:</strong> Debt-to-equity and interest coverage based score.</li>
+                <li><strong>52w Proximity:</strong> Close versus 52-week high, also used in momentum context.</li>
+              </ul>
+            </div>
+            <div class="strategy-section">
+              <h3>🔁 Market Regime Controls in UI</h3>
+              <p>UI regime controls currently adjust displayed weight settings. Ranking still comes from backend composite score unless backend weight-aware scoring is added.</p>
+              <ul>
+                <li><strong>Undervalued</strong> (CAPE < 18): increase momentum factors (+6 Simons, +4 52wk, +3 RevGrowth)</li>
+                <li><strong>Neutral</strong> (18-25): tilt to quality (+3 Munger, +2 Piotroski)</li>
+                <li><strong>Overvalued</strong> (CAPE > 25): rotate to value/defensive (+5 Greenblatt, +3 Altman, +2 VCP, -4 Simons)</li>
+              </ul>
+              <p style="color:${t.ts};">To make regime changes affect picks immediately, connect these weights to backend scoring or client-side recomputation.</p>
+            </div>
+          </div>
+        `;
+      }
+      else if (State.tab === 'watchlist') {
+        content = `<h3>⭐ Watchlist</h3>`;
+        if (State.watchlist.length === 0) {
+          content += `<div style="background:${t.card};padding:30px;border-radius:24px;">Click star on stock modal to add.</div>`;
+        } else {
+          State.watchlist.forEach(s => {
+            content += `
+              <div class="watchlist-item" style="border-color:${t.border}">
+                <span><strong>${s.symbol}</strong> ${s.name}</span>
+                <button class="removeWatchBtn" data-symbol="${s.symbol}" style="background:${t.sell};border:none;color:white;border-radius:20px;padding:2px 10px;">Remove</button>
+              </div>
+            `;
+          });
+        }
+      }
+      else if (State.tab === 'prior') {
+        content = `<h3>📁 Prior Screens</h3>`;
+        if (State.prior.length === 0) {
+          content += `<div style="background:${t.card};padding:30px;border-radius:24px;">No saved screens.</div>`;
+        } else {
+          State.prior.forEach((entry, idx) => {
+            content += `
+              <div style="background:${t.card};border-radius:16px;padding:16px;margin-bottom:12px;border:1px solid ${t.border}">
+                <div style="display:flex;justify-content:space-between">
+                  <span style="font-weight:600">${entry.timestamp}</span>
+                  <button class="loadPriorBtn" data-idx="${idx}" style="background:${t.accent};border:none;color:${t.bg};border-radius:30px;padding:5px 12px">Load</button>
+                </div>
+                <div style="font-size:12px;color:${t.ts}">${entry.state.region} · ${entry.state.sector} · top ${entry.state.numPicks}</div>
+                <div style="margin-top:8px;font-size:13px;">${entry.stocks.map(s => `${s.symbol} (${((s.composite||0)*100).toFixed(0)})`).join(' · ')}</div>
+              </div>
+            `;
+          });
+        }
+      }
+
+      const fullHtml = `<div style="min-height:100vh;background:${t.bg};color:${t.text};padding:16px 20px 32px;">${header}${tabs}${content}</div>`;
+      app.innerHTML = fullHtml;
+
+      document.getElementById('themeSelect')?.addEventListener('change', (e) => setState({ theme: e.target.value }));
+      document.getElementById('fetchLiveBtn')?.addEventListener('click', fetchLiveData);
+      document.getElementById('exportBtn')?.addEventListener('click', () => exportToCSV(State.liveData));
+      document.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', (e) => setState({ tab: e.target.dataset.tab })));
+
+      if (State.tab === 'screener') {
+        // Update geo-tab click to load cache or fetch
+        document.querySelectorAll('.geo-tab').forEach(el => {
+          el.addEventListener('click', async (e) => {
+            const newReg = e.target.dataset.reg;
+            setState({ region: newReg, loadedPriorLabel: null });
+            // Try cache first
+            if (!loadFromCache()) {
+              await fetchLiveData();
+            } else {
+              // Trigger re-render with cached data
+              setState({ liveData: State.liveData }); // force update
+            }
+          });
+        });
+        document.querySelectorAll('.valve-btn').forEach(btn => btn.addEventListener('click', (e) => applyMarketRegime(e.target.dataset.regime, State.region)));
+        document.getElementById('sectorSelect')?.addEventListener('change', async (e) => {
+          setState({ sector: e.target.value, loadedPriorLabel: null });
+          if (!loadFromCache()) {
+            await fetchLiveData();
+          } else {
+            setState({ liveData: State.liveData });
+          }
+        });
+        document.getElementById('numRange')?.addEventListener('input', (e) => setState({ numPicks: parseInt(e.target.value, 10) }));
+        document.getElementById('savePriorBtn')?.addEventListener('click', saveToPrior);
+        document.querySelectorAll('.stock-row').forEach(row => {
+          row.addEventListener('click', function() {
+            const symbol = this.dataset.symbol;
+            const stock = State.liveData.find(s => s.symbol === symbol);
+            if (stock) showStockModal(stock, t);
+          });
+        });
+      }
+
+      if (State.tab === 'watchlist') {
+        document.querySelectorAll('.removeWatchBtn').forEach(btn => btn.addEventListener('click', (e) => {
+          removeFromWatchlist(e.target.dataset.symbol);
+        }));
+      }
+
+      document.getElementById('runBacktestBtn')?.addEventListener('click', runBacktest);
+      document.getElementById('runHistoricalBacktestBtn')?.addEventListener('click', runHistoricalBacktest);
+      document.getElementById('btStartDate')?.addEventListener('change', (e) => {
+        setState({ backtestParams: { ...State.backtestParams, startDate: e.target.value } });
+      });
+      document.getElementById('btEndDate')?.addEventListener('change', (e) => {
+        setState({ backtestParams: { ...State.backtestParams, endDate: e.target.value } });
+      });
+      document.getElementById('btHorizon')?.addEventListener('change', (e) => {
+        setState({ backtestParams: { ...State.backtestParams, horizonDays: parseInt(e.target.value, 10) || 63 } });
+      });
+      document.getElementById('btRebalance')?.addEventListener('change', (e) => {
+        setState({ backtestParams: { ...State.backtestParams, rebalanceDays: parseInt(e.target.value, 10) || 21 } });
+      });
+      document.getElementById('btQuantiles')?.addEventListener('change', (e) => {
+        setState({ backtestParams: { ...State.backtestParams, quantiles: parseInt(e.target.value, 10) || 5 } });
+      });
+
+      if (State.tab === 'prior') {
+        document.querySelectorAll('.loadPriorBtn').forEach(btn => btn.addEventListener('click', (e) => loadPrior(parseInt(e.target.dataset.idx, 10))));
+      }
+    } catch (err) {
+      app.innerHTML = `<div class="error-message">Render error: ${err.message}. Please refresh.</div>`;
+      console.error(err);
+    }
+  }
+
+  subscribe(render);
+  render();
+
+  if ("serviceWorker" in navigator && window.isSecureContext) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
